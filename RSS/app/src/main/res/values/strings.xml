@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">RSS</string>
+    <string name="rss_feed_default">http://leopoldomt.com/if1001/g1brasil.xml</string>
+    <string name="change_rssfeed">CHANGE RSS FEED</string>
+</resources>
