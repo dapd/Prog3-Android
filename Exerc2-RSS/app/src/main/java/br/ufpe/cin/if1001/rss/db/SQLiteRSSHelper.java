@@ -74,20 +74,141 @@ public class SQLiteRSSHelper extends SQLiteOpenHelper {
         return insertItem(item.getTitle(),item.getPubDate(),item.getDescription(),item.getLink());
     }
     public long insertItem(String title, String pubDate, String description, String link) {
-        return 0.0;
+        SQLiteDatabase sqldb = this.getWritableDatabase();
+
+        ContentValues values = new ContentValues();
+        values.put(ITEM_TITLE, title); // Titulo do ItemRSS
+        values.put(ITEM_DATE, pubDate); // Data de publicacao do ItemRSS
+        values.put(ITEM_DESC, description); // Descricao do ItemRSS
+        values.put(ITEM_LINK, link); // Link do ItemRSS
+        values.put(ITEM_UNREAD, String.valueOf(true)); // Se o ItemRSS nao foi lido
+
+        long retorno = sqldb.insert(DATABASE_TABLE, null, values);
+        sqldb.close();
+        return retorno;
     }
+
     public ItemRSS getItemRSS(String link) throws SQLException {
-        return new ItemRSS("FALTA IMPLEMENTAR","FALTA IMPLEMENTAR","2018-04-09","FALTA IMPLEMENTAR");
+        SQLiteDatabase sqldb = this.getReadableDatabase();
+
+        Cursor cursor = sqldb.query(DATABASE_TABLE,
+                                    columns,
+                                    ITEM_LINK + "=?",
+                                    new String[] { link },
+                                    null,
+                                    null,
+                                    null,
+                                    null);
+        ItemRSS irss = null;
+        if (cursor != null) {
+            cursor.moveToFirst();
+            if(cursor.getCount()>0) {
+                irss = new ItemRSS( cursor.getString(1),
+                                    cursor.getString(4),
+                                    cursor.getString(2),
+                                    cursor.getString(3));
+            }
+            cursor.close();
+        }
+
+        sqldb.close();
+        return irss;
     }
+
     public Cursor getItems() throws SQLException {
-        return null;
+        // String que representa consulta para selecionar itens nao lidos
+//        String selecao = "SELECT " + ITEM_UNREAD + "=?" + " FROM " + DATABASE_TABLE;
+
+        SQLiteDatabase sqldb = this.getReadableDatabase();
+        Cursor cursor = sqldb.query(DATABASE_TABLE,
+                columns,
+                ITEM_UNREAD + "=?",
+                new String[] { String.valueOf(true) },
+                null,
+                null,
+                null,
+                null);
+        //Cursor cursor = sqldb.rawQuery(selecao, new String[] { String.valueOf(true) });
+        if(cursor!=null)
+            cursor.moveToFirst();
+
+        sqldb.close();
+        return cursor;
     }
+
     public boolean markAsUnread(String link) {
-        return false;
+        boolean retorno;
+        SQLiteDatabase sqldb = this.getReadableDatabase();
+
+        Cursor cursor = sqldb.query(DATABASE_TABLE,
+                columns,
+                ITEM_LINK + "=?",
+                new String[] { link },
+                null,
+                null,
+                null,
+                null);
+
+        if(cursor!=null){
+            cursor.moveToFirst();
+
+            ContentValues values = new ContentValues();
+            values.put(ITEM_TITLE, cursor.getString(1)); // Titulo do ItemRSS
+            values.put(ITEM_DATE, cursor.getString(2)); // Data de publicacao do ItemRSS
+            values.put(ITEM_DESC, cursor.getString(3)); // Descricao do ItemRSS
+            values.put(ITEM_LINK, cursor.getString(4)); // Link do ItemRSS
+            values.put(ITEM_UNREAD, String.valueOf(true)); // ItemRSS nao foi lido
+
+            sqldb.update(   DATABASE_TABLE, values,
+                            ITEM_LINK + " = ?",
+                            new String[] { link }   );
+            cursor.close();
+            retorno = true;
+        }
+        else {
+            retorno = false;
+        }
+
+        sqldb.close();
+        return retorno;
     }
 
     public boolean markAsRead(String link) {
-        return false;
+        boolean retorno;
+        SQLiteDatabase sqldb = this.getReadableDatabase();
+
+        Cursor cursor = sqldb.query(DATABASE_TABLE,
+                columns,
+                ITEM_LINK + "=?",
+                new String[] { link },
+                null,
+                null,
+                null,
+                null);
+
+        if(cursor!=null){
+            cursor.moveToFirst();
+
+            ContentValues values = new ContentValues();
+            values.put(ITEM_TITLE, cursor.getString(1)); // Titulo do ItemRSS
+            values.put(ITEM_DATE, cursor.getString(2)); // Data de publicacao do ItemRSS
+            values.put(ITEM_DESC, cursor.getString(3)); // Descricao do ItemRSS
+            values.put(ITEM_LINK, cursor.getString(4)); // Link do ItemRSS
+            values.put(ITEM_UNREAD, String.valueOf(false)); // ItemRSS foi lido
+
+            sqldb.update(   DATABASE_TABLE, values,
+                    ITEM_LINK + " = ?",
+                    new String[] { link }   );
+
+            cursor.close();
+            retorno = true;
+        }
+        else {
+            retorno = false;
+        }
+
+        sqldb.close();
+        return retorno;
     }
 
 }

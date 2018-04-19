@@ -1,7 +1,11 @@
 package br.ufpe.cin.if1001.rss.ui;
 
 import android.app.Activity;
+import android.app.IntentService;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
@@ -17,6 +21,7 @@ import android.widget.CursorAdapter;
 import android.widget.ListView;
 import android.widget.SimpleCursorAdapter;
 import android.widget.Toast;
+import android.support.v4.content.LocalBroadcastManager;
 
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -72,8 +77,21 @@ public class MainActivity extends Activity {
         // a notícia seja marcada como lida no banco
         conteudoRSS.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                // é necessário fazer o cast abaixo, pois parent é um objeto do tipo AdapterView<?>.
+                // Sabemos neste caso que é um SimpleCursorAdapter.
                 SimpleCursorAdapter adapter = (SimpleCursorAdapter) parent.getAdapter();
+                //O adapter guarda objetos do tipo Cursor.
                 Cursor mCursor = ((Cursor) adapter.getItem(position));
+                //Tendo acesso ao cursor, podemos obter o link do item.
+                String item_link = mCursor.getString(4);
+                //Marcando noticia como lida no banco
+                boolean ok = db.markAsRead(item_link);
+                Log.d("DB", "markAsRead funcionou? " + ok);
+                //Abrir link no navegador
+                Intent i = new Intent();
+                i.setAction(Intent.ACTION_VIEW);
+                i.setData(Uri.parse(item_link));
+                startActivity(i);   // Iniciando Activity que lida com a String
             }
         });
     }
@@ -83,7 +101,12 @@ public class MainActivity extends Activity {
         super.onStart();
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         String linkfeed = preferences.getString("rssfeedlink", getResources().getString(R.string.rssfeed));
-        new CarregaRSS().execute(linkfeed);
+        Log.d("RSS", "Periodicidade: " + preferences.getString("periodicidade_pref", ""));
+        //Iniciando service para download e persistencia dos itens do feed no banco
+        Intent rssService = new Intent(getApplicationContext(),RssService.class);
+        rssService.setData(Uri.parse(linkfeed));
+        startService(rssService);
+        //new CarregaRSS().execute(linkfeed);
     }
 
     @Override
@@ -108,6 +131,28 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        //Registrando dinamicamente o Broadcast receiver
+        IntentFilter f = new IntentFilter(RssService.RSS_COMPLETE);
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(onDownloadCompleteEvent, f);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        //De-registrando o Broadcast receiver
+        LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(onDownloadCompleteEvent);
+    }
+
+    private BroadcastReceiver onDownloadCompleteEvent = new BroadcastReceiver() {
+        public void onReceive(Context ctx, Intent i) {
+            Toast.makeText(ctx, "Download e persistencia dos itens finalizados!", Toast.LENGTH_LONG).show();
+            new ExibirFeed().execute();
+        }
+    };
+
     class CarregaRSS extends AsyncTask<String, Void, Boolean> {
 
         @Override
@@ -122,7 +167,8 @@ public class MainActivity extends Activity {
                     ItemRSS item = db.getItemRSS(i.getLink());
                     if (item == null) {
                         Log.d("DB", "Encontrado pela primeira vez: " + i.getTitle());
-                        db.insertItem(i);
+                        long ret = db.insertItem(i);
+                        Log.d("DB", "Retorno: " + ret);
                     }
                 }
 
@@ -152,7 +198,7 @@ public class MainActivity extends Activity {
         @Override
         protected Cursor doInBackground(Void... voids) {
             Cursor c = db.getItems();
-            c.getCount();
+            Log.d("DB", "Qtd de linhas: " + c.getCount());
             return c;
         }
 

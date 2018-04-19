@@ -18,6 +18,15 @@
             </intent-filter>
         </activity>
         <activity android:name=".ui.ConfigActivity" />
+        <service android:name=".ui.RssService" />
+        <receiver
+            android:name=".ui.NovaNoticiaReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="br.ufpe.cin.if1001.rss.action.NEWITEMRSS" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -11,5 +11,13 @@
             android:dialogMessage="Digite o link"
             android:positiveButtonText="Salvar"
             android:negativeButtonText="Cancelar" />
+        <ListPreference
+            android:defaultValue="1"
+            android:key="periodicidade_pref"
+            android:title="Periodicidade de carregamento"
+            android:dialogTitle="Altere a periodicidade de carregamento de notícias"
+            android:entries="@array/Periodicidade"
+            android:entryValues="@array/Periodicidade"
+            android:negativeButtonText="Cancelar" />
     </PreferenceCategory>
 </PreferenceScreen>
