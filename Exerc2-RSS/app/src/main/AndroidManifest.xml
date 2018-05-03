@@ -32,6 +32,11 @@
                 <action android:name="br.ufpe.cin.if1001.rss.action.NEWITEMRSS" />
             </intent-filter>
         </receiver>
+        <provider
+            android:name=".db.RssProvider"
+            android:authorities="br.ufpe.cin.if1001.rss.leitura"
+            android:enabled="true"
+            android:exported="true" />
     </application>
 
 </manifest>

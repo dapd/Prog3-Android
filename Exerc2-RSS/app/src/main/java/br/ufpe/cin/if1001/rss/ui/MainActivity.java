@@ -49,18 +49,10 @@ public class MainActivity extends Activity {
     private ListView conteudoRSS;
     private final String RSS_FEED = "http://rss.cnn.com/rss/edition.rss";
     private SQLiteRSSHelper db;
-    private NovaNoticiaReceiver novaNoticiaRec;
+    private NovaNoticiaReceiver novaNoticiaRec; //Broadcast receiver estatico
 
     private static final int JOB_ID = 710;
-    static final String KEY_DOWNLOAD="isDownload";
-
-    private static final long[] PERIODS = {
-            AlarmManager.INTERVAL_FIFTEEN_MINUTES,
-            AlarmManager.INTERVAL_HALF_HOUR,
-            AlarmManager.INTERVAL_HOUR
-    };
-
-    JobScheduler jobScheduler;
+    JobScheduler jobScheduler;  //JobScheduler para agendamento de tarefa periodica
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -197,9 +189,8 @@ public class MainActivity extends Activity {
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     private void agendarJob() {
         JobInfo.Builder b = new JobInfo.Builder(JOB_ID, new ComponentName(this, DownloadJobService.class));
-        //criterio de rede
+        //criterio de rede: A tarefa so deve ser executada se houver conectividade
         b.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY);
-        //b.setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE);
 
         //definindo a periodicidade de download do feed rss
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
@@ -239,7 +230,7 @@ public class MainActivity extends Activity {
 
         //periodo de tempo minimo pra rodar
         //so pode ser chamado se nao definir setPeriodic...
-        b.setMinimumLatency(3000);
+        //b.setMinimumLatency(3000);
 
         //mesmo que criterios nao sejam atingidos, define um limite de tempo
         //so pode ser chamado se nao definir setPeriodic...
