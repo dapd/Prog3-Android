@@ -1,8 +1,12 @@
 package br.ufpe.cin.if1001.rss.ui;
 
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.IntentService;
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -10,8 +14,10 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.annotation.RequiresApi;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -20,6 +26,7 @@ import android.widget.AdapterView;
 import android.widget.CursorAdapter;
 import android.widget.ListView;
 import android.widget.SimpleCursorAdapter;
+import android.widget.Spinner;
 import android.widget.Toast;
 import android.support.v4.content.LocalBroadcastManager;
 
@@ -42,6 +49,18 @@ public class MainActivity extends Activity {
     private ListView conteudoRSS;
     private final String RSS_FEED = "http://rss.cnn.com/rss/edition.rss";
     private SQLiteRSSHelper db;
+    private NovaNoticiaReceiver novaNoticiaRec;
+
+    private static final int JOB_ID = 710;
+    static final String KEY_DOWNLOAD="isDownload";
+
+    private static final long[] PERIODS = {
+            AlarmManager.INTERVAL_FIFTEEN_MINUTES,
+            AlarmManager.INTERVAL_HALF_HOUR,
+            AlarmManager.INTERVAL_HOUR
+    };
+
+    JobScheduler jobScheduler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,6 +92,8 @@ public class MainActivity extends Activity {
         // permite filtrar conteudo pelo teclado virtual
         conteudoRSS.setTextFilterEnabled(true);
 
+        novaNoticiaRec = new NovaNoticiaReceiver();
+
         //Complete a implementação deste método de forma que ao clicar, o link seja aberto no navegador e
         // a notícia seja marcada como lida no banco
         conteudoRSS.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -94,19 +115,34 @@ public class MainActivity extends Activity {
                 startActivity(i);   // Iniciando Activity que lida com a String
             }
         });
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            jobScheduler = (JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE);
+        }
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-        String linkfeed = preferences.getString("rssfeedlink", getResources().getString(R.string.rssfeed));
-        Log.d("RSS", "Periodicidade: " + preferences.getString("periodicidade_pref", ""));
+        //Agendando Job
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            agendarJob();
+        }
+        //SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        //String linkfeed = preferences.getString("rssfeedlink", getResources().getString(R.string.rssfeed));
+        //Log.d("RSS", "Periodicidade: " + preferences.getString("periodicidade_pref", ""));
         //Iniciando service para download e persistencia dos itens do feed no banco
-        Intent rssService = new Intent(getApplicationContext(),RssService.class);
-        rssService.setData(Uri.parse(linkfeed));
-        startService(rssService);
-        //new CarregaRSS().execute(linkfeed);
+        //Intent rssService = new Intent(getApplicationContext(),RssService.class);
+        //rssService.setData(Uri.parse(linkfeed));
+        //startService(rssService);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        //Cancelando Job
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            jobScheduler.cancel(JOB_ID);
+        }
     }
 
     @Override
@@ -137,6 +173,8 @@ public class MainActivity extends Activity {
         //Registrando dinamicamente o Broadcast receiver
         IntentFilter f = new IntentFilter(RssService.RSS_COMPLETE);
         LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(onDownloadCompleteEvent, f);
+        //De-registrando o Broadcast receiver estatico
+        LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(novaNoticiaRec);
     }
 
     @Override
@@ -144,6 +182,9 @@ public class MainActivity extends Activity {
         super.onPause();
         //De-registrando o Broadcast receiver
         LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(onDownloadCompleteEvent);
+        //Registrando o Broadcast receiver estatico
+        IntentFilter f = new IntentFilter(RssService.NEWITEMRSS);
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(novaNoticiaRec, f);
     }
 
     private BroadcastReceiver onDownloadCompleteEvent = new BroadcastReceiver() {
@@ -153,44 +194,58 @@ public class MainActivity extends Activity {
         }
     };
 
-    class CarregaRSS extends AsyncTask<String, Void, Boolean> {
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    private void agendarJob() {
+        JobInfo.Builder b = new JobInfo.Builder(JOB_ID, new ComponentName(this, DownloadJobService.class));
+        //criterio de rede
+        b.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY);
+        //b.setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE);
 
-        @Override
-        protected Boolean doInBackground(String... feeds) {
-            boolean flag_problema = false;
-            List<ItemRSS> items = null;
-            try {
-                String feed = getRssFeed(feeds[0]);
-                items = ParserRSS.parse(feed);
-                for (ItemRSS i : items) {
-                    Log.d("DB", "Buscando no Banco por link: " + i.getLink());
-                    ItemRSS item = db.getItemRSS(i.getLink());
-                    if (item == null) {
-                        Log.d("DB", "Encontrado pela primeira vez: " + i.getTitle());
-                        long ret = db.insertItem(i);
-                        Log.d("DB", "Retorno: " + ret);
-                    }
-                }
-
-            } catch (IOException e) {
-                e.printStackTrace();
-                flag_problema = true;
-            } catch (XmlPullParserException e) {
-                e.printStackTrace();
-                flag_problema = true;
-            }
-            return flag_problema;
+        //definindo a periodicidade de download do feed rss
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        switch(preferences.getString("periodicidade_pref", "")) {
+            case "30 min":
+                b.setPeriodic(AlarmManager.INTERVAL_HALF_HOUR);
+                break;
+            case "1h":
+                b.setPeriodic(AlarmManager.INTERVAL_HOUR);
+                break;
+            case "3h":
+                b.setPeriodic(3*AlarmManager.INTERVAL_HOUR);
+                break;
+            case "6h":
+                b.setPeriodic(6*AlarmManager.INTERVAL_HOUR);
+                break;
+            case "12h":
+                b.setPeriodic(AlarmManager.INTERVAL_HALF_DAY);
+                break;
+            case "24h":
+                b.setPeriodic(AlarmManager.INTERVAL_DAY);
+                break;
         }
 
-        @Override
-        protected void onPostExecute(Boolean teveProblema) {
-            if (teveProblema) {
-                Toast.makeText(MainActivity.this, "Houve algum problema ao carregar o feed.", Toast.LENGTH_SHORT).show();
-            } else {
-                //dispara o task que exibe a lista
-                new ExibirFeed().execute();
-            }
-        }
+        //exige (ou nao) que esteja conectado ao carregador
+        b.setRequiresCharging(false);
+
+        //persiste (ou nao) job entre reboots
+        //se colocar true, tem que solicitar permissao action_boot_completed
+        //b.setPersisted(false);
+
+        //exige (ou nao) que dispositivo esteja idle
+        b.setRequiresDeviceIdle(false);
+
+        //backoff criteria (linear ou exponencial)
+        //b.setBackoffCriteria(1500, JobInfo.BACKOFF_POLICY_EXPONENTIAL);
+
+        //periodo de tempo minimo pra rodar
+        //so pode ser chamado se nao definir setPeriodic...
+        b.setMinimumLatency(3000);
+
+        //mesmo que criterios nao sejam atingidos, define um limite de tempo
+        //so pode ser chamado se nao definir setPeriodic...
+        //b.setOverrideDeadline(6000);
+
+        jobScheduler.schedule(b.build());
     }
 
     class ExibirFeed extends AsyncTask<Void, Void, Cursor> {
